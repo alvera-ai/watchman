@@ -7,12 +7,15 @@ package main
 import (
 	"context"
 	"path/filepath"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/moov-io/watchman/internal/download"
 	"github.com/moov-io/watchman/internal/fshelp"
 	"github.com/moov-io/watchman/internal/index"
+	"github.com/moov-io/watchman/internal/tfidf"
+	"github.com/moov-io/watchman/pkg/search"
 
 	"github.com/moov-io/base/log"
 	"github.com/stretchr/testify/require"
@@ -58,4 +61,80 @@ func TestDownloader_setupPeriodicRefreshing(t *testing.T) {
 
 	cancelFunc()
 	require.NoError(t, <-errs)
+}
+
+func TestSetupPeriodicRefreshing_TickerActuallyFires(t *testing.T) {
+	// Use a very short refresh interval to test ticker behavior
+	t.Setenv("DATA_REFRESH_INTERVAL", "50ms")
+
+	ctx, cancelFunc := context.WithCancel(context.Background())
+	defer cancelFunc()
+
+	logger := log.NewTestLogger()
+
+	// Track RefreshAll calls with a mock
+	var refreshCount atomic.Int32
+	mockDl := &mockDownloader{
+		refreshFn: func(ctx context.Context) (download.Stats, error) {
+			refreshCount.Add(1)
+			return download.Stats{
+				Entities:   []search.Entity[search.Value]{},
+				Lists:      map[string]int{},
+				ListHashes: map[string]string{},
+				StartedAt:  time.Now(),
+				EndedAt:    time.Now(),
+			}, nil
+		},
+	}
+
+	mockIdx := &mockLists{}
+	errs := make(chan error, 1)
+	conf := download.Config{} // RefreshInterval overridden by env var
+
+	err := setupPeriodicRefreshing(ctx, logger, errs, conf, mockDl, mockIdx)
+	require.NoError(t, err)
+
+	// Initial call happens immediately in refreshAllSources (line 22)
+	// Then ticker should fire at 50ms, 100ms, etc.
+	// Wait long enough for at least 2 ticker fires
+	time.Sleep(150 * time.Millisecond)
+
+	// Should have: 1 initial + at least 2 periodic = 3+
+	count := refreshCount.Load()
+	require.GreaterOrEqual(t, count, int32(3),
+		"expected at least 3 refresh calls (1 initial + 2 periodic), got %d", count)
+
+	// Clean shutdown
+	cancelFunc()
+	require.NoError(t, <-errs)
+}
+
+// mockDownloader implements download.Downloader for testing
+type mockDownloader struct {
+	refreshFn func(ctx context.Context) (download.Stats, error)
+}
+
+func (m *mockDownloader) RefreshAll(ctx context.Context) (download.Stats, error) {
+	return m.refreshFn(ctx)
+}
+
+// mockLists implements index.Lists for testing
+type mockLists struct {
+	updateCount atomic.Int32
+}
+
+func (m *mockLists) GetEntities(ctx context.Context, source search.SourceList) ([]search.Entity[search.Value], error) {
+	return nil, nil
+}
+
+func (m *mockLists) Update(latest download.Stats) {
+	m.updateCount.Add(1)
+}
+
+func (m *mockLists) LatestStats() download.Stats {
+	return download.Stats{}
+}
+
+func (m *mockLists) GetTFIDFIndex() *tfidf.Index {
+	return nil
 }
