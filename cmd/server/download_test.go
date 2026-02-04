@@ -63,8 +63,20 @@ func TestDownloader_setupPeriodicRefreshing(t *testing.T) {
 	require.NoError(t, <-errs)
 }
 
+// TestSetupPeriodicRefreshing_TickerActuallyFires verifies the ticker lifecycle fix.
+//
+// Bug: Previously, ticker.Stop() was deferred in setupPeriodicRefreshing(), which
+// stopped the ticker immediately when the function returned (before any periodic
+// refreshes could occur). The goroutine would then block forever on ticker.C.
+//
+// Fix: Move ticker.Stop() inside the goroutine's defer, so it only stops when
+// the goroutine exits (on context cancellation).
+//
+// This test verifies the fix by:
+//  1. Setting a short refresh interval (50ms)
+//  2. Waiting long enough for multiple ticker fires (150ms)
+//  3. Asserting that RefreshAll was called at least 3 times (1 initial + 2 periodic)
 func TestSetupPeriodicRefreshing_TickerActuallyFires(t *testing.T) {
-	// Use a very short refresh interval to test ticker behavior
 	t.Setenv("DATA_REFRESH_INTERVAL", "50ms")
 
 	ctx, cancelFunc := context.WithCancel(context.Background())
@@ -109,7 +121,8 @@ func TestSetupPeriodicRefreshing_TickerActuallyFires(t *testing.T) {
 	require.NoError(t, <-errs)
 }
 
-// mockDownloader implements download.Downloader for testing
+// mockDownloader implements download.Downloader for testing.
+// Allows injecting custom RefreshAll behavior via refreshFn.
 type mockDownloader struct {
 	refreshFn func(ctx context.Context) (download.Stats, error)
 }
@@ -118,16 +131,17 @@ func (m *mockDownloader) RefreshAll(ctx context.Context) (download.Stats, error)
 	return m.refreshFn(ctx)
 }
 
-// mockLists implements index.Lists for testing
+// mockLists implements index.Lists for testing.
+// Tracks Update() calls via atomic counter for concurrency-safe assertions.
 type mockLists struct {
 	updateCount atomic.Int32
 }
 
-func (m *mockLists) GetEntities(ctx context.Context, source search.SourceList) ([]search.Entity[search.Value], error) {
+func (m *mockLists) GetEntities(_ context.Context, _ search.SourceList) ([]search.Entity[search.Value], error) {
 	return nil, nil
 }
 
-func (m *mockLists) Update(latest download.Stats) {
+func (m *mockLists) Update(_ download.Stats) {
 	m.updateCount.Add(1)
 }
 
