@@ -49,7 +49,10 @@ RUN VERSION=${VERSION} GOTAGS="-tags libpostal" make build-server postal-server
 
 # Final stage
 FROM debian:trixie
-LABEL maintainer="Moov <oss@moov.io>"
+LABEL maintainer="Alvera AI <engineering@alvera.ai>"
+LABEL org.opencontainers.image.source="https://github.com/alvera-ai/watchman"
+LABEL org.opencontainers.image.description="Sanctions screening service with all US watchlists enabled"
+LABEL org.opencontainers.image.licenses="Apache-2.0"
 
 # Install runtime dependencies
 RUN apt-get update && \
@@ -70,6 +73,8 @@ RUN ldconfig
 COPY --from=backend /src/bin/server /bin/server
 COPY --from=backend /src/bin/postal-server /bin/postal-server
 COPY --from=backend /src/configs/config.all-lists.yml /etc/watchman/config.yml
+COPY --from=backend /src/LICENSE /etc/watchman/LICENSE
+COPY --from=backend /src/NOTICE /etc/watchman/NOTICE
 ENV POSTAL_SERVER_BIN_PATH=/bin/postal-server
 
 # Set environment variables
