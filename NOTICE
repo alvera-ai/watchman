@@ -1,0 +1,29 @@
+Alvera Watchman
+Copyright 2024-2026 Alvera AI (https://alvera.ai)
+
+This product includes software developed at Moov Financial, Inc.
+(https://moov.io/)
+
+Original Watchman project:
+Copyright 2018-2024 The Moov Authors
+https://github.com/moov-io/watchman
+
+Licensed under the Apache License, Version 2.0.
+
+---
+
+MODIFICATIONS BY ALVERA AI:
+
+- Added pre-configured Docker image with all US sanctions lists enabled by default
+- Custom configuration (configs/config.all-lists.yml)
+- Multi-architecture Docker builds (linux/amd64, linux/arm64)
+- GitHub Container Registry publishing workflow
+
+---
+
+This product includes the following third-party components:
+
+libpostal - https://github.com/openvenues/libpostal
+License: MIT
+
+For a complete list of dependencies, see go.mod
